@@ -1,0 +1,8 @@
+cpp/build/
+cpp/build-*/
+__pycache__/
+*.pyc
+.pytest_cache/
+data/*.bin
+data/*.fp
+data/*.summary

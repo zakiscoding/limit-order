@@ -1,0 +1,99 @@
+# name: price_time
+T 3 1 100 100
+T 3 2 100 50
+B 2 100 50
+END
+
+# name: no_cross
+B 4 90 10
+A 5 110 10
+END
+
+# name: cancel_resting
+A 7 95 40
+END
+
+# name: qty_down_keeps_priority
+T 12 10 50 40
+B 11 50 100
+END
+
+# name: qty_up_loses_priority
+T 22 21 60 50
+B 20 60 80
+END
+
+# name: modify_cross
+T 31 30 70 10
+END
+
+# name: sweep_asks
+T 43 40 101 5
+T 43 41 102 5
+T 43 42 103 5
+B 43 103 5
+END
+
+# name: sell_sweeps_bids
+T 4 1 105 4
+T 4 2 104 2
+B 2 104 2
+B 3 103 4
+END
+
+# name: ioc_partial
+T 51 50 80 5
+END
+
+# name: ioc_miss
+A 1 50 10
+END
+
+# name: rejects
+R 6
+B 60 10 1
+END
+
+# name: id_reuse
+B 70 41 15
+END
+
+# name: partial_then_cancel
+T 2 1 10 4
+END
+
+# name: partial_rest
+T 81 80 33 10
+A 81 33 15
+END
+
+# name: reprice_to_back
+T 92 90 20 10
+B 91 20 10
+END
+
+# name: modify_partial_cross
+T 3 1 100 5
+B 3 100 15
+A 2 110 100
+END
+
+# name: modify_noop
+B 1 10 10
+END
+
+# name: cancel_best
+B 2 99 10
+END
+
+# name: cancel_head
+B 2 70 12
+END
+
+# name: cancel_tail
+B 1 70 10
+END
+
+# name: cancel_unknown
+R 1
+END

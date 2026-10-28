@@ -1,0 +1,128 @@
+# name: price_time
+ADD 1 B 100 100 GTC 1
+ADD 2 B 100 100 GTC 2
+ADD 3 S 100 150 GTC 3
+RESET
+
+# name: no_cross
+ADD 4 B 90 10 GTC 4
+ADD 5 S 110 10 GTC 5
+RESET
+
+# name: cancel_resting
+ADD 6 B 95 40 GTC 6
+CANCEL 6 7
+ADD 7 S 95 40 GTC 8
+RESET
+
+# name: qty_down_keeps_priority
+ADD 10 B 50 100 GTC 10
+ADD 11 B 50 100 GTC 11
+MODIFY 10 50 40 12
+ADD 12 S 50 40 GTC 13
+RESET
+
+# name: qty_up_loses_priority
+ADD 20 B 60 50 GTC 20
+ADD 21 B 60 50 GTC 21
+MODIFY 20 60 80 22
+ADD 22 S 60 50 GTC 23
+RESET
+
+# name: modify_cross
+ADD 30 S 70 10 GTC 30
+ADD 31 B 60 10 GTC 31
+MODIFY 31 70 10 32
+RESET
+
+# name: sweep_asks
+ADD 40 S 101 5 GTC 40
+ADD 41 S 102 5 GTC 41
+ADD 42 S 103 5 GTC 42
+ADD 43 B 103 20 GTC 43
+RESET
+
+# name: sell_sweeps_bids
+ADD 1 B 105 4 GTC 1
+ADD 2 B 104 4 GTC 2
+ADD 3 B 103 4 GTC 3
+ADD 4 S 103 6 GTC 4
+RESET
+
+# name: ioc_partial
+ADD 50 S 80 5 GTC 50
+ADD 51 B 80 10 IOC 51
+RESET
+
+# name: ioc_miss
+ADD 1 S 50 10 GTC 1
+ADD 2 B 40 10 IOC 2
+RESET
+
+# name: rejects
+ADD 60 B 10 1 GTC 60
+ADD 60 B 11 1 GTC 61
+CANCEL 999 62
+MODIFY 999 10 1 63
+ADD 61 B 0 1 GTC 64
+ADD 62 B 10 0 GTC 65
+MODIFY 60 0 5 66
+RESET
+
+# name: id_reuse
+ADD 70 B 40 15 GTC 70
+CANCEL 70 71
+ADD 70 B 41 15 GTC 72
+RESET
+
+# name: partial_then_cancel
+ADD 1 B 10 10 GTC 1
+ADD 2 S 10 4 GTC 2
+CANCEL 1 3
+RESET
+
+# name: partial_rest
+ADD 80 B 33 10 GTC 80
+ADD 81 S 33 25 GTC 81
+RESET
+
+# name: reprice_to_back
+ADD 90 B 20 10 GTC 90
+ADD 91 B 21 10 GTC 91
+MODIFY 91 20 10 92
+ADD 92 S 20 10 GTC 93
+RESET
+
+# name: modify_partial_cross
+ADD 1 S 100 5 GTC 1
+ADD 2 S 110 100 GTC 2
+ADD 3 B 90 20 GTC 3
+MODIFY 3 100 20 4
+RESET
+
+# name: modify_noop
+ADD 1 B 10 10 GTC 1
+MODIFY 1 10 10 2
+RESET
+
+# name: cancel_best
+ADD 1 B 100 10 GTC 1
+ADD 2 B 99 10 GTC 2
+CANCEL 1 3
+RESET
+
+# name: cancel_head
+ADD 1 B 70 10 GTC 1
+ADD 2 B 70 12 GTC 2
+CANCEL 1 3
+RESET
+
+# name: cancel_tail
+ADD 1 B 70 10 GTC 1
+ADD 2 B 70 12 GTC 2
+CANCEL 2 3
+RESET
+
+# name: cancel_unknown
+CANCEL 1 1
+RESET
