@@ -1,0 +1,6 @@
+seed=42
+events=2000000
+passes=5
+repeats=5
+cpu=default
+groups=

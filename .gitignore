@@ -6,3 +6,4 @@ __pycache__/
 data/*.bin
 data/*.fp
 data/*.summary
+results/runs/

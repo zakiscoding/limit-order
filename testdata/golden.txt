@@ -1,0 +1,6 @@
+# Expected end-of-run values for seed 42. test.sh compares against these.
+# Both lines came from the same C++ and Python implementations agreeing, and
+# the book hashes match the figures first recorded on Windows with Clang
+# (see results/RESULTS.md). A change here means matching behavior changed.
+replay seed=42 events=100000 book=e8b6334c0b7a8d25 trade_hash=01b954900ae15ff1 trades=43239 rejects=33973 orders=3311
+bench seed=42 events=2000000 book=510a7332d2e46339 trade_hash=f5122ddf7ab89668

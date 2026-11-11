@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <cstdint>
 
 namespace lob {
@@ -18,11 +19,17 @@ inline constexpr bool kProf = false;
 inline uint64_t rdtsc_raw() {
 #if defined(_MSC_VER)
     return __rdtsc();
-#else
+#elif defined(__x86_64__) || defined(__i386__)
     unsigned int lo;
     unsigned int hi;
     __asm__ volatile("rdtsc" : "=a"(lo), "=d"(hi)::"memory");
     return (static_cast<uint64_t>(hi) << 32) | lo;
+#else
+    // No cycle counter on this target. Nanoseconds keep the phase timers
+    // usable, but the "cycles" in their output are then nanoseconds.
+    return static_cast<uint64_t>(
+        std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::steady_clock::now().time_since_epoch())
+            .count());
 #endif
 }
 

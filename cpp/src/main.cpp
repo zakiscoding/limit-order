@@ -1,4 +1,7 @@
 #include "lob/engine.hpp"
+#include "lob/latency.hpp"
+#include "lob/net.hpp"
+#include "lob/perf_loop.hpp"
 
 #include <algorithm>
 #include <cmath>
@@ -17,6 +20,13 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 #include <windows.h>
+#else
+#include <sched.h>
+#include <sys/utsname.h>
+#include <time.h>
+#include <unistd.h>
+
+#include <fstream>
 #endif
 
 namespace {
@@ -67,8 +77,18 @@ void usage() {
         << "  lob_engine selftest --scenarios FILE --expected FILE\n"
         << "  lob_engine generate --seed N --count N --output FILE\n"
         << "  lob_engine replay --input FILE --output FILE [--checkpoint N] [--verify]\n"
-        << "  lob_engine bench --seed N --count N [--runs N]\n"
-        << "  lob_engine profile --seed N --count N\n";
+        << "  lob_engine bench --seed N --count N [--runs N] [--cpu N]\n"
+        << "  lob_engine latency-selftest\n"
+        << "  lob_engine latency --seed N --count N [--runs N] [--cpu N] [--json FILE]\n"
+        << "  lob_engine apply-loop --seed N --count N [--passes N] [--cpu N]\n"
+        << "  lob_engine net-selftest\n"
+        << "  lob_engine serve --proto udp|tcp [--port N] [--port-b N] [--bind ADDR] [--fingerprints FILE]\n"
+        << "                   [--checkpoint N] [--verify] [--ready-file FILE] [--idle-timeout-ms N]\n"
+        << "                   [--busy-poll] [--cpu N]\n"
+        << "  lob_engine send --proto udp|tcp --target HOST:PORT [--target-b HOST:PORT]\n"
+        << "                  [--seed N --count N | --input FILE] [--batch N] [--rate EVENTS_PER_S]\n"
+        << "                  [--drop-a P] [--drop-b P] [--dup P] [--reorder K] [--impair-seed N]\n"
+        << "  lob_engine profile --seed N --count N [--cpu N]\n";
 }
 
 #if defined(_WIN32)
@@ -100,22 +120,25 @@ std::string cpu_brand() {
     return std::string(brand);
 }
 
-uint64_t qpc_now() {
+uint64_t tick_now() {
     LARGE_INTEGER counter;
     QueryPerformanceCounter(&counter);
     return static_cast<uint64_t>(counter.QuadPart);
 }
 
-uint64_t qpc_freq() {
+uint64_t tick_freq() {
     LARGE_INTEGER freq;
     QueryPerformanceFrequency(&freq);
     return static_cast<uint64_t>(freq.QuadPart);
 }
 
-void pin_thread() {
+void pin_thread(int cpu) {
     SYSTEM_INFO info;
     GetSystemInfo(&info);
     DWORD_PTR mask = info.dwNumberOfProcessors >= 4 ? (DWORD_PTR{1} << 2) : DWORD_PTR{1};
+    if (cpu >= 0) {
+        mask = DWORD_PTR{1} << cpu;
+    }
     if (SetThreadAffinityMask(GetCurrentThread(), mask) == 0) {
         std::cerr << "warning: could not pin the benchmark thread\n";
     }
@@ -133,15 +156,83 @@ void print_hardware() {
     std::cout << "hardware cpu=\"" << cpu_brand() << "\""
               << " ram_bytes=" << memory.ullTotalPhys
               << " logical_processors=" << info.dwNumberOfProcessors
-              << " qpc_hz=" << qpc_freq() << '\n';
+              << " tick_hz=" << tick_freq() << '\n';
 }
 
-uint64_t qpc_overhead_ticks() {
+#else
+std::string cpu_brand() {
+    std::ifstream in("/proc/cpuinfo");
+    std::string line;
+    while (std::getline(in, line)) {
+        if (line.rfind("model name", 0) == 0) {
+            std::size_t colon = line.find(':');
+            if (colon == std::string::npos) {
+                break;
+            }
+            std::size_t start = line.find_first_not_of(" \t", colon + 1);
+            return start == std::string::npos ? "unknown" : line.substr(start);
+        }
+    }
+    return "unknown";
+}
+
+uint64_t tick_now() {
+    timespec ts;
+    clock_gettime(CLOCK_MONOTONIC_RAW, &ts);
+    return static_cast<uint64_t>(ts.tv_sec) * 1000000000ull + static_cast<uint64_t>(ts.tv_nsec);
+}
+
+uint64_t tick_freq() { return 1000000000ull; }
+
+// Pins to `cpu` when given, otherwise to the third allowed CPU (the second
+// logical processor pair on a typical SMT machine), or the first if fewer
+// than four are allowed. This mirrors the Windows default.
+void pin_thread(int cpu) {
+    cpu_set_t allowed;
+    CPU_ZERO(&allowed);
+    if (sched_getaffinity(0, sizeof(allowed), &allowed) != 0) {
+        std::cerr << "warning: could not read CPU affinity\n";
+        return;
+    }
+    std::vector<int> usable;
+    for (int i = 0; i < CPU_SETSIZE; ++i) {
+        if (CPU_ISSET(i, &allowed)) {
+            usable.push_back(i);
+        }
+    }
+    if (usable.empty()) {
+        return;
+    }
+    int target = cpu >= 0 ? cpu : (usable.size() >= 4 ? usable[2] : usable[0]);
+    cpu_set_t one;
+    CPU_ZERO(&one);
+    CPU_SET(target, &one);
+    if (sched_setaffinity(0, sizeof(one), &one) != 0) {
+        std::cerr << "warning: could not pin the benchmark thread to cpu " << target << '\n';
+        return;
+    }
+    std::cout << "pinned cpu=" << target << '\n';
+}
+
+void print_hardware() {
+    utsname uts;
+    std::string kernel = uname(&uts) == 0 ? std::string(uts.sysname) + " " + uts.release : "unknown";
+    const long pages = sysconf(_SC_PHYS_PAGES);
+    const long page_size = sysconf(_SC_PAGESIZE);
+    const unsigned long long ram =
+        pages > 0 && page_size > 0 ? static_cast<unsigned long long>(pages) * static_cast<unsigned long long>(page_size) : 0;
+    std::cout << "hardware cpu=\"" << cpu_brand() << "\""
+              << " ram_bytes=" << ram << " logical_processors=" << sysconf(_SC_NPROCESSORS_ONLN)
+              << " tick_hz=" << tick_freq() << " os=\"" << kernel << "\"\n";
+}
+#endif
+
+uint64_t tick_overhead_ticks() {
     constexpr int kSamples = 200000;
     std::vector<uint64_t> deltas(static_cast<std::size_t>(kSamples));
     for (int i = 0; i < kSamples; ++i) {
-        uint64_t start = qpc_now();
-        uint64_t stop = qpc_now();
+        uint64_t start = tick_now();
+        uint64_t stop = tick_now();
         deltas[static_cast<std::size_t>(i)] = stop - start;
     }
     std::nth_element(deltas.begin(), deltas.begin() + kSamples / 2, deltas.end());
@@ -166,7 +257,7 @@ const char* compiler_id() {
 #elif defined(_MSC_VER)
     return "msvc";
 #elif defined(__GNUC__)
-    return "gcc";
+    return "gcc " __VERSION__;
 #else
     return "unknown";
 #endif
@@ -180,7 +271,7 @@ int run_bench(const Options& options, bool instrumented_profile) {
         throw std::runtime_error("count and runs must be positive");
     }
 
-    pin_thread();
+    pin_thread(options.has("cpu") ? static_cast<int>(options.u64("cpu", 0)) : -1);
     print_hardware();
     std::cout << "compiler " << compiler_id()
 #ifdef NDEBUG
@@ -206,11 +297,11 @@ int run_bench(const Options& options, bool instrumented_profile) {
 
     auto time_once = [&]() {
         lob::Book book;
-        uint64_t start = qpc_now();
+        uint64_t start = tick_now();
         for (const lob::Event& event : events) {
             book.apply(event);
         }
-        uint64_t stop = qpc_now();
+        uint64_t stop = tick_now();
         struct Result {
             double seconds = 0;
             uint64_t book_hash = 0;
@@ -221,7 +312,7 @@ int run_bench(const Options& options, bool instrumented_profile) {
             lob::Book::Depth depth;
         };
         Result result;
-        result.seconds = static_cast<double>(stop - start) / static_cast<double>(qpc_freq());
+        result.seconds = static_cast<double>(stop - start) / static_cast<double>(tick_freq());
         result.book_hash = book.book_hash();
         result.trade_hash = book.trade_hash();
         result.trades = book.trade_count();
@@ -279,16 +370,16 @@ int run_bench(const Options& options, bool instrumented_profile) {
     const Run& best = measured[static_cast<std::size_t>(order.back())];
     const double mean_service_ns = 1e9 / median.eps;
 
-    const uint64_t freq = qpc_freq();
-    const uint64_t overhead_ticks = qpc_overhead_ticks();
+    const uint64_t freq = tick_freq();
+    const uint64_t overhead_ticks = tick_overhead_ticks();
     const double overhead_ns = static_cast<double>(overhead_ticks) * 1e9 / static_cast<double>(freq);
     std::vector<uint32_t> samples(static_cast<std::size_t>(count));
     {
         lob::Book book;
         for (uint64_t i = 0; i < count; ++i) {
-            uint64_t start = qpc_now();
+            uint64_t start = tick_now();
             book.apply(events[static_cast<std::size_t>(i)]);
-            uint64_t stop = qpc_now();
+            uint64_t stop = tick_now();
             uint64_t delta = stop - start;
             uint64_t net = delta > overhead_ticks ? delta - overhead_ticks : 0;
             double ns = static_cast<double>(net) * 1e9 / static_cast<double>(freq);
@@ -313,15 +404,16 @@ int run_bench(const Options& options, bool instrumented_profile) {
     };
     uint32_t p50 = percentile_sorted(sorted, 0.50);
     uint32_t p90 = percentile_sorted(sorted, 0.90);
+    uint32_t p95 = percentile_sorted(sorted, 0.95);
     uint32_t p99 = percentile_sorted(sorted, 0.99);
     uint32_t p999 = percentile_sorted(sorted, 0.999);
-    std::cout << "latency_ns min=" << sorted.front() << " p50=" << p50 << " p90=" << p90 << " p99=" << p99
+    std::cout << "latency_ns min=" << sorted.front() << " p50=" << p50 << " p90=" << p90 << " p95=" << p95 << " p99=" << p99
               << " p999=" << p999 << " max=" << sorted.back() << " mean=" << mean_of()
-              << " qpc_pair_overhead_ns=" << overhead_ns << '\n';
+              << " tick_pair_overhead_ns=" << overhead_ns << '\n';
     std::cout << std::hex;
     std::cout << "RESULT impl=open_address_index events=" << std::dec << count << " seed=" << seed << " runs=" << runs
               << std::fixed << std::setprecision(3) << " median_eps=" << median.eps << " best_eps=" << best.eps
-              << " mean_service_ns=" << mean_service_ns << " p50_ns=" << p50 << " p99_ns=" << p99
+              << " mean_service_ns=" << mean_service_ns << " p50_ns=" << p50 << " p95_ns=" << p95 << " p99_ns=" << p99
               << " p999_ns=" << p999 << " trades=" << median.trades << " rejects=" << median.rejects
               << " final_orders=" << median.orders << " bid_levels=" << median.depth.bid_levels
               << " ask_levels=" << median.depth.ask_levels << " bid_orders=" << median.depth.bid_orders
@@ -330,7 +422,6 @@ int run_bench(const Options& options, bool instrumented_profile) {
               << " trade_hash=" << median.trade_hash << std::dec << '\n';
     return 0;
 }
-#endif
 
 }  // namespace
 
@@ -373,12 +464,73 @@ int main(int argc, char** argv) {
                                 options.flag("verify"));
             return 0;
         }
-        if (command == "bench" || command == "profile") {
-#if defined(_WIN32)
-            return run_bench(options, command == "profile");
+        if (command == "net-selftest") {
+            return lob::net_selftest();
+        }
+        if (command == "serve") {
+            lob::ServeConfig config;
+            config.proto = options.get("proto", "udp");
+            config.bind_addr = options.get("bind", "127.0.0.1");
+            config.port = static_cast<int>(options.u64("port", 0));
+            config.port_b = options.has("port-b") ? static_cast<int>(options.u64("port-b", 0)) : -1;
+            config.fingerprints_path = options.get("fingerprints");
+            config.checkpoint = options.u64("checkpoint", 1000);
+            config.verify = options.flag("verify");
+            config.ready_file = options.get("ready-file");
+            config.idle_timeout_ms = static_cast<int>(options.u64("idle-timeout-ms", 3000));
+            config.busy_poll = options.flag("busy-poll");
+            if (options.has("cpu")) {
+                pin_thread(static_cast<int>(options.u64("cpu", 0)));
+            }
+            return lob::run_serve(config);
+        }
+        if (command == "send") {
+            lob::SendConfig config;
+            config.proto = options.get("proto", "udp");
+            config.target_a = options.get("target");
+            config.target_b = options.get("target-b");
+            config.seed = options.u64("seed", 42);
+            config.count = options.u64("count", 100000);
+            config.input = options.get("input");
+            config.batch = static_cast<int>(options.u64("batch", 32));
+            config.rate = options.has("rate") ? std::stod(options.get("rate")) : 0.0;
+            config.drop_a = options.has("drop-a") ? std::stod(options.get("drop-a")) : 0.0;
+            config.drop_b = options.has("drop-b") ? std::stod(options.get("drop-b")) : 0.0;
+            config.dup = options.has("dup") ? std::stod(options.get("dup")) : 0.0;
+            config.reorder = static_cast<int>(options.u64("reorder", 1));
+            config.impair_seed = options.u64("impair-seed", 1);
+            if (options.has("cpu")) {
+                pin_thread(static_cast<int>(options.u64("cpu", 0)));
+            }
+            return lob::run_send(config);
+        }
+        if (command == "apply-loop") {
+            pin_thread(options.has("cpu") ? static_cast<int>(options.u64("cpu", 0)) : -1);
+            return lob::run_apply_loop(options.u64("seed", 42), options.u64("count", 2000000),
+                                       options.u64("passes", 1));
+        }
+        if (command == "latency-selftest") {
+            return lob::latency_selftest();
+        }
+        if (command == "latency") {
+            lob::LatencyConfig config;
+            config.seed = options.u64("seed", 42);
+            config.count = options.u64("count", 2000000);
+            config.runs = static_cast<int>(options.u64("runs", 5));
+            config.json_path = options.get("json");
+            pin_thread(options.has("cpu") ? static_cast<int>(options.u64("cpu", 0)) : -1);
+            print_hardware();
+            std::cout << "compiler " << compiler_id()
+#ifdef NDEBUG
+                      << " config=Release"
 #else
-            throw std::runtime_error("bench is implemented for Windows QPC in this tree");
+                      << " config=Debug"
 #endif
+                      << '\n';
+            return lob::run_latency(config);
+        }
+        if (command == "bench" || command == "profile") {
+            return run_bench(options, command == "profile");
         }
         usage();
         return 2;

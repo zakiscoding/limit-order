@@ -1,0 +1,37 @@
+pinned cpu=0
+hardware cpu="Intel(R) Core(TM) i7-14700F" ram_bytes=4105633792 logical_processors=2 tick_hz=1000000000 os="Linux 6.8.0-138-generic"
+compiler gcc 11.4.0 config=Release
+latency_config seed=42 events=2000000 runs=5 timer=rdtsc_lfence/rdtscp_lfence ticks_per_ns=2.112 ticks_per_ns_min=2.112 ticks_per_ns_max=2.112 timer_overhead_ticks_median=31 timer_overhead_ticks_min=28 timer_overhead_ns=14.678 percentile_method=nearest_rank
+stream adds=1099915 cancels=700207 modifies=199878
+run 1 p50_ns=49.716 p90_ns=114.109 p95_ns=137.310 p99_ns=207.859 p99.9_ns=331.912 p99.99_ns=5171.384 max_ns=1189030.119 mean_ns=62.784 slowest_event=1486287 over_1us=305
+run 2 p50_ns=48.295 p90_ns=105.587 p95_ns=128.787 p99_ns=188.446 p99.9_ns=304.450 p99.99_ns=4922.806 max_ns=1134116.003 mean_ns=59.604 slowest_event=1486287 over_1us=277
+run 3 p50_ns=47.822 p90_ns=110.795 p95_ns=134.469 p99_ns=205.492 p99.9_ns=332.859 p99.99_ns=4881.139 max_ns=1392757.185 mean_ns=60.695 slowest_event=1486287 over_1us=268
+run 4 p50_ns=47.348 p90_ns=107.007 p95_ns=131.155 p99_ns=197.443 p99.9_ns=324.810 p99.99_ns=5016.082 max_ns=1168318.541 mean_ns=59.705 slowest_event=1486287 over_1us=301
+run 5 p50_ns=46.875 p90_ns=101.799 p95_ns=125.000 p99_ns=183.238 p99.9_ns=303.029 p99.99_ns=4850.836 max_ns=1138805.382 mean_ns=57.811 slowest_event=1486287 over_1us=325
+summary (ns, median of 5 runs, [min..max] across runs)
+  all     p50           47.822  [46.875..49.716]
+  all     p95          131.155  [125.000..137.310]
+  all     p99          197.443  [183.238..207.859]
+  all     p99.9        324.810  [303.029..332.859]
+  all     p99.99      4922.806  [4850.836..5171.384]
+  all     max      1168318.541  [1134116.003..1392757.185]
+  add     p50           62.500  [61.553..65.341]
+  add     p95          142.518  [136.837..148.200]
+  add     p99          213.067  [198.863..221.590]
+  add     p99.9        338.541  [316.287..355.586]
+  add     p99.99      5414.281  [5201.214..5531.232]
+  add     max      1168318.541  [1134116.003..1392757.185]
+  cancel  p50           31.723  [31.250..33.144]
+  cancel  p95           98.011  [89.488..103.693]
+  cancel  p99          159.564  [144.412..170.454]
+  cancel  p99.9        292.613  [272.726..298.768]
+  cancel  p99.99      1037.402  [749.051..2972.528]
+  cancel  max        17992.364  [12399.580..48447.755]
+  modify  p50           33.144  [32.670..34.564]
+  modify  p95          114.583  [107.954..119.318]
+  modify  p99          187.973  [169.507..198.389]
+  modify  p99.9        316.287  [289.298..326.703]
+  modify  p99.99      4229.153  [1614.104..5017.976]
+  modify  max        13835.655  [10342.768..106250.119]
+LATENCY events=2000000 seed=42 runs=5 p50_ns=47.822 p95_ns=131.155 p99_ns=197.443 p999_ns=324.810 book=510a7332d2e46339 trade_hash=f5122ddf7ab89668
+wrote results/linux-vm-2026-11-11/run2/latency.json

@@ -34,6 +34,24 @@ The generator is SplitMix64. For a non-empty live id set the next event is cance
 
 ## Build and check
 
+### Linux
+
+Requirements: CMake 3.20 or newer, a C++17 compiler (GCC or Clang), Python 3, and optionally Ninja (used when present, otherwise CMake picks Makefiles).
+
+```bash
+scripts/test.sh                  # unit tests, build, selftest, Python/C++ replay compare, golden check
+scripts/test.sh --bench-smoke    # also runs the 2,000,000-event bench once and checks its hashes
+scripts/test.sh --sanitize       # same checks under AddressSanitizer and UBSan
+scripts/build.sh                 # build only; prints the binary path (cpp/build/lob_engine)
+CXX=clang++ scripts/build.sh     # pick a compiler
+```
+
+`testdata/golden.txt` holds the expected end-of-run hashes for seed 42. A Linux GCC build and the original Windows Clang build produce the same book hash for both the 100,000-event replay and the 2,000,000-event bench log, so the golden values are not tied to one platform. Change them only on purpose, because a mismatch means matching behavior changed.
+
+GitHub Actions (`.github/workflows/ci.yml`) runs `scripts/test.sh --bench-smoke` on Ubuntu 22.04 and 24.04 with both GCC and Clang, plus a sanitizer job. The bench is the same code on both platforms. It uses `QueryPerformanceCounter` on Windows and `clock_gettime(CLOCK_MONOTONIC_RAW)` on Linux; pass `--cpu N` to pin to a specific logical CPU.
+
+### Windows
+
 Requirements: Python 3.12, CMake, Ninja, Clang.
 
 ```powershell
@@ -66,12 +84,57 @@ cmake --build cpp/build-prof
 .\cpp\build-prof\lob_engine.exe profile --seed 42 --count 2000000 --runs 1
 ```
 
+## Latency
+
+`lob_engine latency` times every `Book::apply` call with serialized `rdtsc`/`rdtscp`, subtracts the measured timer overhead, and reports p50, p90, p95, p99, p99.9, p99.99, max, and mean, overall and per event type, for each of N passes and as a median across passes. `scripts/bench.sh` builds, records the machine and build in `environment.txt`, and runs the latency and throughput benchmarks on a fixed seed (Linux only).
+
+```bash
+scripts/bench.sh                                          # seed 42, 2,000,000 events, 5 passes
+./cpp/build/lob_engine latency --seed 42 --count 2000000 --runs 5 --cpu 2 --json out.json
+```
+
+On the Linux virtual machine described in [results/LATENCY.md](results/LATENCY.md), three invocations gave p50 of 47.8 to 53.0 ns, p95 of 131 to 166 ns, and p99 of 197 to 268 ns per event. That machine has no frequency control and shares its core with a hypervisor, so the file also gives the spread, the method, and an explanation of the slowest event.
+
+## Profiling
+
+`scripts/perf_profile.sh` counts allocations (works anywhere on Linux), and, where the machine exposes performance counters, runs `perf stat` for cycles, instructions, branch misses, cache misses, and TLB misses, and `perf record` for per-function attribution of cycles, branch misses, and cache misses.
+
+```bash
+scripts/perf_profile.sh --alloc-only     # allocation counts, page faults, RSS; no perf needed
+scripts/perf_profile.sh --cpu 2          # everything; needs perf and PMU access
+```
+
+The replay loop makes 684,912 `operator new` calls for 2,000,000 events (0.34 per event); 92% of them are `Order` nodes. Hardware-counter results have not been collected yet, because the machine used for development was a virtual machine without PMU access. [results/PERF.md](results/PERF.md) says what was measured, what was not, and how the script works.
+
+## Network
+
+`lob_engine serve` ingests events over TCP or UDP (optionally two redundant UDP lines merged by sequence number) and applies them to the same book as `replay`; `lob_engine send` is the test sender, with seeded loss, duplication and reordering. A gap is a hard failure, not a skip. Wire format, design and limits: [docs/NETWORK.md](docs/NETWORK.md). Loopback latency on the VM used here (UDP, busy-poll, batch 32: p50 5.6 µs): [results/NETWORK.md](results/NETWORK.md).
+
+```
+bash scripts/net_test.sh        # loopback tcp, udp, udp A/B with loss; compares with offline replay
+bash scripts/net_bench.sh       # wire-to-book latency
+```
+
+## Benchmark limits
+
+All Linux numbers in `results/` come from a Hyper-V guest (2 logical CPUs, 4 GB RAM, i7-14700F host), not bare metal.
+
+- Timing: the guest TSC is virtualized and the vCPUs can be descheduled by the hypervisor, so tail latencies (p99.9 and above, and the 1 to 3 ms maxima in the network runs) include host noise. CPU frequency and SMT state are not controllable from the guest.
+- Hardware counters: the guest exposes no PMU, so cache-miss and branch-miss counts are not measured. Run `scripts/perf_profile.sh` on bare metal or a VM with PMU passthrough.
+- Network: sender and receiver share the same 2 vCPUs over loopback. The numbers exclude the NIC, driver, switch and any real wire jitter, and UDP loopback needs a paced sender to avoid socket-buffer loss.
+- Use the ranges across runs, not single values, and re-run on your own hardware before comparing.
+
 ## Layout
 
-- `cpp/` — matcher, generator, replay, benchmark
-- `python/lob/` — reference matcher and the same generator
-- `testdata/` — scripted events and the expected trades and book
-- `results/RESULTS.md` — hardware, workload, profile, and timings
+- `cpp/`: matcher, generator, replay, benchmark, latency, wire format and network ingestion
+- `scripts/`: `build.sh`, `test.sh`, `bench.sh` for Linux; `run_all.ps1` for Windows
+- `.github/workflows/ci.yml`: Linux CI (GCC and Clang, sanitizers)
+- `python/lob/`: reference matcher and the same generator
+- `testdata/`: scripted events and the expected trades and book
+- `results/RESULTS.md`: hardware, workload, profile, and timings (Windows)
+- `results/LATENCY.md`: Linux latency percentiles and method
+- `docs/NETWORK.md`, `results/NETWORK.md`: wire format, sequencing design, loopback latency
+- `results/PERF.md`: allocation measurements and the perf profiling method
 
 ## Performance
 

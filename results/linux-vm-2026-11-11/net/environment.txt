@@ -1,0 +1,30 @@
+date_utc: 2026-11-11T17:26:35Z
+git_commit: 82481f1daf43665dc93efabae4c87930cd6b3289
+git_tree: dirty
+kernel: Linux 6.8.0-138-generic #138~22.04.1-Ubuntu SMP PREEMPT_DYNAMIC Fri Aug  7 13:43:15 UTC  x86_64
+os: Ubuntu 22.04.5 LTS
+cpu_model: Intel(R) Core(TM) i7-14700F
+logical_cpus: 2
+memory_kib: 4009408
+lscpu: Model name:                              Intel(R) Core(TM) i7-14700F
+lscpu: Thread(s) per core:                      2
+lscpu: Core(s) per socket:                      1
+lscpu: Socket(s):                               1
+lscpu: Hypervisor vendor:                       Microsoft
+lscpu: Virtualization type:                     full
+lscpu: L1d cache:                               48 KiB (1 instance)
+lscpu: L2 cache:                                2 MiB (1 instance)
+lscpu: L3 cache:                                33 MiB (1 instance)
+hypervisor_flag: yes
+cpufreq_governor: unavailable
+intel_pstate_no_turbo: unavailable
+smt_active: 1
+perf_event_paranoid: 4
+kernel_cmdline: console=ttyS0 earlyprintk=serial root=LABEL=cloudimg-rootfs rootfstype=ext4 rw panic=10
+compiler: c++ (Ubuntu 11.4.0-1ubuntu1~22.04.3) 11.4.0
+cmake_build_type: Release
+cmake_cxx_compiler: /usr/bin/g++
+cmake_cxx_flags: 
+cmake_cxx_flags_release: -O3 -DNDEBUG
+cmake_cxx_flags_relwithdebinfo: -O2 -g -DNDEBUG
+net_bench: count=500000 rate=100000 repeat=3 serve_cpu=unpinned send_cpu=unpinned

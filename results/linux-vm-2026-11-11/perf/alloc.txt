@@ -1,0 +1,2 @@
+pinned cpu=0
+APPLY_LOOP seed=42 events=2000000 passes=1 wall_seconds=0.137499 book=510a7332d2e46339 trade_hash=f5122ddf7ab89668 alloc_counting=on new_calls=684912 delete_calls=632958 bytes_allocated=55964744 bytes_freed=44649104 peak_live_growth_bytes=14531416 live_growth_bytes=11315640 minor_faults=2052 major_faults=0 max_rss_kib=93452
